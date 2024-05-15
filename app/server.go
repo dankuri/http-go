@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"log/slog"
 	"net"
 	"os"
 )
@@ -9,13 +9,19 @@ import (
 func main() {
 	l, err := net.Listen("tcp", "0.0.0.0:4221")
 	if err != nil {
-		fmt.Println("Failed to bind to port 4221")
+		slog.Error("failed to bind to port 4221")
 		os.Exit(1)
 	}
 
-	_, err = l.Accept()
+	slog.Info("started listening on port 4221")
+	conn, err := l.Accept()
 	if err != nil {
-		fmt.Println("Error accepting connection: ", err.Error())
+		slog.Error("failed to accept conn", "err", err)
+		os.Exit(1)
+	}
+	_, err = conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
+	if err != nil {
+		slog.Error("failed to writing to conn", "err", err)
 		os.Exit(1)
 	}
 }
