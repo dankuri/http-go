@@ -2,15 +2,30 @@ package main
 
 import (
 	"bufio"
+	"errors"
+	"flag"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
 
+type Config struct {
+	Dir string
+}
+
 func main() {
+	dir := flag.String("directory", "./", "root directory for file server")
+	flag.Parse()
+
+	cfg := &Config{
+		Dir: *dir,
+	}
+
 	l, err := net.Listen("tcp", "0.0.0.0:4221")
 	if err != nil {
 		slog.Error("failed to bind to port 4221")
@@ -28,7 +43,7 @@ func main() {
 		}
 		connID++
 		go func() {
-			err := handleConn(conn, connID)
+			err := handleConn(cfg, conn, connID)
 			if err != nil {
 				slog.Error("failed to handle conn", "err", err)
 			}
@@ -36,7 +51,7 @@ func main() {
 	}
 }
 
-func handleConn(conn net.Conn, connID int) error {
+func handleConn(cfg *Config, conn net.Conn, connID int) error {
 	rd := bufio.NewReader(conn)
 	req, err := ParseRequest(rd)
 	if err != nil {
@@ -55,6 +70,12 @@ func handleConn(conn net.Conn, connID int) error {
 		return resp.Encode(conn)
 	} else if req.Path == "/user-agent" {
 		resp, err := handleUserAgent(req)
+		if err != nil {
+			return fmt.Errorf("failed to handle user-agent req: %w", err)
+		}
+		return resp.Encode(conn)
+	} else if req.Method == GET && strings.HasPrefix(req.Path, "/files/") {
+		resp, err := handleGetFile(cfg.Dir, req)
 		if err != nil {
 			return fmt.Errorf("failed to handle user-agent req: %w", err)
 		}
@@ -124,6 +145,30 @@ func handleUserAgent(req *HTTPRequest) (*HTTPResponse, error) {
 			"Content-Length": strconv.Itoa(len(userAgent)),
 		},
 		ResponseBody: []byte(userAgent),
+	}
+
+	return resp, nil
+}
+
+func handleGetFile(rootDir string, req *HTTPRequest) (*HTTPResponse, error) {
+	filePath, _ := strings.CutPrefix(req.Path, "/files/")
+	data, err := os.ReadFile(filepath.Join(rootDir, filePath))
+	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			slog.Error("something is wrong with reading file", "err", err)
+		}
+		return NotFoundResp(), nil
+	}
+
+	resp := &HTTPResponse{
+		Proto:      req.Proto,
+		Status:     200,
+		StatusText: "OK",
+		Headers: HTTPHeaders{
+			"Content-Type":   "application/octet-stream",
+			"Content-Length": strconv.Itoa(len(data)),
+		},
+		ResponseBody: data,
 	}
 
 	return resp, nil
