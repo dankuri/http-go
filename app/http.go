@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"strings"
 )
 
@@ -13,11 +14,25 @@ const (
 	POST HTTPMethod = "POST"
 )
 
+type HTTPHeaders map[string]string
+
+func (h HTTPHeaders) String() string {
+	builder := new(strings.Builder)
+	for header, value := range h {
+		_, err := fmt.Fprintf(builder, "%s: %s\r\n", header, value)
+		if err != nil {
+			return ""
+		}
+	}
+
+	return builder.String()
+}
+
 type HTTPRequest struct {
 	Method      HTTPMethod
 	Path        string
 	Proto       string
-	Headers     map[string]string
+	Headers     HTTPHeaders
 	RequestBody []byte
 }
 
@@ -49,4 +64,26 @@ func ParseRequest(r *bufio.Reader) (*HTTPRequest, error) {
 	}
 
 	return req, nil
+}
+
+type HTTPResponse struct {
+	Proto        string
+	Status       uint16
+	StatusText   string
+	Headers      HTTPHeaders
+	ResponseBody []byte
+}
+
+func (resp *HTTPResponse) Encode(w io.Writer) error {
+	_, err := fmt.Fprintf(
+		w,
+		"%s %d %s\r\n%s\r\n%s",
+		resp.Proto,
+		resp.Status,
+		resp.StatusText,
+		resp.Headers,
+		resp.ResponseBody,
+	)
+
+	return err
 }

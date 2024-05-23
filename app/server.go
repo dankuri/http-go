@@ -2,9 +2,12 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"log/slog"
 	"net"
 	"os"
+	"strconv"
+	"strings"
 )
 
 func main() {
@@ -44,10 +47,48 @@ func handleConn(conn net.Conn, connID int) error {
 		_, err := conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
 		slog.Info("responded 200", "connID", connID)
 		return err
+	} else if strings.HasPrefix(req.Path, "/echo") {
+		resp, err := handleEcho(req)
+		if err != nil {
+			_, _ = conn.Write([]byte("HTTP/1.1 500 Internal Server Error\r\n\r\n"))
+			return fmt.Errorf("failed to handle echo req: %w", err)
+		}
+		return resp.Encode(conn)
 	}
 
 	_, err = conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
 	slog.Info("responded 404", "connID", connID)
 
 	return err
+}
+
+func handleEcho(req *HTTPRequest) (*HTTPResponse, error) {
+	data, found := strings.CutPrefix(req.Path, "/echo/")
+	if !found || len(data) == 0 {
+		errMsg := "empty path"
+		errResp := &HTTPResponse{
+			Proto:      req.Proto,
+			Status:     400,
+			StatusText: "Bad Request",
+			Headers: HTTPHeaders{
+				"Content-Type":   "text/plain",
+				"Content-Length": strconv.Itoa(len(errMsg)),
+			},
+			ResponseBody: []byte(errMsg),
+		}
+		return errResp, nil
+	}
+
+	resp := &HTTPResponse{
+		Proto:      req.Proto,
+		Status:     200,
+		StatusText: "OK",
+		Headers: HTTPHeaders{
+			"Content-Type":   "text/plain",
+			"Content-Length": strconv.Itoa(len(data)),
+		},
+		ResponseBody: []byte(data),
+	}
+
+	return resp, nil
 }
