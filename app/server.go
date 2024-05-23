@@ -50,8 +50,13 @@ func handleConn(conn net.Conn, connID int) error {
 	} else if strings.HasPrefix(req.Path, "/echo") {
 		resp, err := handleEcho(req)
 		if err != nil {
-			_, _ = conn.Write([]byte("HTTP/1.1 500 Internal Server Error\r\n\r\n"))
 			return fmt.Errorf("failed to handle echo req: %w", err)
+		}
+		return resp.Encode(conn)
+	} else if req.Path == "/user-agent" {
+		resp, err := handleUserAgent(req)
+		if err != nil {
+			return fmt.Errorf("failed to handle user-agent req: %w", err)
 		}
 		return resp.Encode(conn)
 	}
@@ -88,6 +93,37 @@ func handleEcho(req *HTTPRequest) (*HTTPResponse, error) {
 			"Content-Length": strconv.Itoa(len(data)),
 		},
 		ResponseBody: []byte(data),
+	}
+
+	return resp, nil
+}
+
+func handleUserAgent(req *HTTPRequest) (*HTTPResponse, error) {
+	userAgent, found := req.Headers["User-Agent"]
+	if !found || len(userAgent) == 0 {
+		errMsg := "empty User-Agent"
+		errResp := &HTTPResponse{
+			Proto:      req.Proto,
+			Status:     400,
+			StatusText: "Bad Request",
+			Headers: HTTPHeaders{
+				"Content-Type":   "text/plain",
+				"Content-Length": strconv.Itoa(len(errMsg)),
+			},
+			ResponseBody: []byte(errMsg),
+		}
+		return errResp, nil
+	}
+
+	resp := &HTTPResponse{
+		Proto:      req.Proto,
+		Status:     200,
+		StatusText: "OK",
+		Headers: HTTPHeaders{
+			"Content-Type":   "text/plain",
+			"Content-Length": strconv.Itoa(len(userAgent)),
+		},
+		ResponseBody: []byte(userAgent),
 	}
 
 	return resp, nil

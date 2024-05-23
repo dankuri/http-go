@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"net/textproto"
 	"strings"
 )
 
@@ -57,10 +58,33 @@ func ParseRequest(r *bufio.Reader) (*HTTPRequest, error) {
 		return nil, fmt.Errorf("unknown method")
 	}
 
+	headers := make(HTTPHeaders)
+
+	for {
+		headerRaw, err := r.ReadString('\n')
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse headers: %w", err)
+		}
+		headerRaw, found = strings.CutSuffix(headerRaw, "\r\n")
+		if !found {
+			return nil, ErrInvalidFormat
+		}
+		if headerRaw == "" {
+			break
+		}
+		parts := strings.SplitN(headerRaw, ": ", 2)
+		if len(parts) != 2 {
+			return nil, ErrInvalidFormat
+		}
+		header := textproto.CanonicalMIMEHeaderKey(parts[0])
+		headers[header] = parts[1]
+	}
+
 	req := &HTTPRequest{
-		Method: method,
-		Path:   path,
-		Proto:  proto,
+		Method:  method,
+		Path:    path,
+		Proto:   proto,
+		Headers: headers,
 	}
 
 	return req, nil
