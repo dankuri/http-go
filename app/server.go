@@ -99,7 +99,7 @@ func handleEcho(req *HTTPRequest) (*HTTPResponse, error) {
 		return BadResp("empty path"), nil
 	}
 
-	return OKResp("text/plain", []byte(data)), nil
+	return OKResp("text/plain", []byte(data)).MatchEncoding(req), nil
 }
 
 func handleUserAgent(req *HTTPRequest) (*HTTPResponse, error) {
@@ -121,7 +121,7 @@ func handleGetFile(rootDir string, req *HTTPRequest) (*HTTPResponse, error) {
 		return NotFoundResp(), nil
 	}
 
-	return OKResp("application/octet-stream", data), nil
+	return OKResp("application/octet-stream", data).MatchEncoding(req), nil
 }
 
 func handlePostFile(rootDir string, req *HTTPRequest) (*HTTPResponse, error) {

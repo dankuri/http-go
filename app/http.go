@@ -119,6 +119,16 @@ type HTTPResponse struct {
 	Body       []byte
 }
 
+func (resp *HTTPResponse) MatchEncoding(req *HTTPRequest) *HTTPResponse {
+	acceptEnc := req.Headers["Accept-Encoding"]
+	if acceptEnc != "gzip" {
+		return resp
+	}
+
+	resp.Headers["Content-Encoding"] = acceptEnc
+	return resp
+}
+
 func (resp *HTTPResponse) Encode(w io.Writer) error {
 	_, err := fmt.Fprintf(
 		w,
