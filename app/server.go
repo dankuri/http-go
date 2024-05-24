@@ -10,7 +10,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
 
@@ -80,6 +79,12 @@ func handleConn(cfg *Config, conn net.Conn, connID int) error {
 			return fmt.Errorf("failed to handle user-agent req: %w", err)
 		}
 		return resp.Encode(conn)
+	} else if req.Method == POST && strings.HasPrefix(req.Path, "/files/") {
+		resp, err := handlePostFile(cfg.Dir, req)
+		if err != nil {
+			return fmt.Errorf("failed to handle user-agent req: %w", err)
+		}
+		return resp.Encode(conn)
 	}
 
 	_, err = conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
@@ -91,68 +96,24 @@ func handleConn(cfg *Config, conn net.Conn, connID int) error {
 func handleEcho(req *HTTPRequest) (*HTTPResponse, error) {
 	data, found := strings.CutPrefix(req.Path, "/echo/")
 	if !found || len(data) == 0 {
-		errMsg := "empty path"
-		errResp := &HTTPResponse{
-			Proto:      req.Proto,
-			Status:     400,
-			StatusText: "Bad Request",
-			Headers: HTTPHeaders{
-				"Content-Type":   "text/plain",
-				"Content-Length": strconv.Itoa(len(errMsg)),
-			},
-			ResponseBody: []byte(errMsg),
-		}
-		return errResp, nil
+		return BadResp("empty path"), nil
 	}
 
-	resp := &HTTPResponse{
-		Proto:      req.Proto,
-		Status:     200,
-		StatusText: "OK",
-		Headers: HTTPHeaders{
-			"Content-Type":   "text/plain",
-			"Content-Length": strconv.Itoa(len(data)),
-		},
-		ResponseBody: []byte(data),
-	}
-
-	return resp, nil
+	return OKResp("text/plain", []byte(data)), nil
 }
 
 func handleUserAgent(req *HTTPRequest) (*HTTPResponse, error) {
 	userAgent, found := req.Headers["User-Agent"]
 	if !found || len(userAgent) == 0 {
-		errMsg := "empty User-Agent"
-		errResp := &HTTPResponse{
-			Proto:      req.Proto,
-			Status:     400,
-			StatusText: "Bad Request",
-			Headers: HTTPHeaders{
-				"Content-Type":   "text/plain",
-				"Content-Length": strconv.Itoa(len(errMsg)),
-			},
-			ResponseBody: []byte(errMsg),
-		}
-		return errResp, nil
+		return BadResp("empty User-Agent"), nil
 	}
 
-	resp := &HTTPResponse{
-		Proto:      req.Proto,
-		Status:     200,
-		StatusText: "OK",
-		Headers: HTTPHeaders{
-			"Content-Type":   "text/plain",
-			"Content-Length": strconv.Itoa(len(userAgent)),
-		},
-		ResponseBody: []byte(userAgent),
-	}
-
-	return resp, nil
+	return OKResp("text/plain", []byte(userAgent)), nil
 }
 
 func handleGetFile(rootDir string, req *HTTPRequest) (*HTTPResponse, error) {
-	filePath, _ := strings.CutPrefix(req.Path, "/files/")
-	data, err := os.ReadFile(filepath.Join(rootDir, filePath))
+	fileName, _ := strings.CutPrefix(req.Path, "/files/")
+	data, err := os.ReadFile(filepath.Join(rootDir, fileName))
 	if err != nil {
 		if !errors.Is(err, fs.ErrNotExist) {
 			slog.Error("something is wrong with reading file", "err", err)
@@ -160,15 +121,27 @@ func handleGetFile(rootDir string, req *HTTPRequest) (*HTTPResponse, error) {
 		return NotFoundResp(), nil
 	}
 
+	return OKResp("application/octet-stream", data), nil
+}
+
+func handlePostFile(rootDir string, req *HTTPRequest) (*HTTPResponse, error) {
+	fileName, _ := strings.CutPrefix(req.Path, "/files/")
+	fullPath := filepath.Join(rootDir, fileName)
+	file, err := os.Create(fullPath)
+	if err != nil {
+		return InternalErrResp("failed to create file"), nil
+	}
+	defer file.Close()
+
+	_, err = file.Write(req.Body)
+	if err != nil {
+		return InternalErrResp("failed to save file"), nil
+	}
+
 	resp := &HTTPResponse{
 		Proto:      req.Proto,
-		Status:     200,
-		StatusText: "OK",
-		Headers: HTTPHeaders{
-			"Content-Type":   "application/octet-stream",
-			"Content-Length": strconv.Itoa(len(data)),
-		},
-		ResponseBody: data,
+		Status:     201,
+		StatusText: "Created",
 	}
 
 	return resp, nil

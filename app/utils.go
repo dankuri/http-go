@@ -11,7 +11,7 @@ func OKResp(dataType string, body []byte) *HTTPResponse {
 			"Content-Type":   dataType,
 			"Content-Length": strconv.Itoa(len(body)),
 		},
-		ResponseBody: body,
+		Body: body,
 	}
 }
 
@@ -24,7 +24,7 @@ func BadResp(msg string) *HTTPResponse {
 			"Content-Type":   "text/plain",
 			"Content-Length": strconv.Itoa(len(msg)),
 		},
-		ResponseBody: []byte(msg),
+		Body: []byte(msg),
 	}
 }
 
@@ -33,5 +33,18 @@ func NotFoundResp() *HTTPResponse {
 		Proto:      "HTTP/1.1",
 		Status:     404,
 		StatusText: "Not Found",
+	}
+}
+
+func InternalErrResp(msg string) *HTTPResponse {
+	return &HTTPResponse{
+		Proto:      "HTTP/1.1",
+		Status:     500,
+		StatusText: "Internal Server Error",
+		Headers: HTTPHeaders{
+			"Content-Type":   "text/plain",
+			"Content-Length": strconv.Itoa(len(msg)),
+		},
+		Body: []byte(msg),
 	}
 }

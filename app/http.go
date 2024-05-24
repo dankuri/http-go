@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/textproto"
+	"strconv"
 	"strings"
 )
 
@@ -30,11 +31,11 @@ func (h HTTPHeaders) String() string {
 }
 
 type HTTPRequest struct {
-	Method      HTTPMethod
-	Path        string
-	Proto       string
-	Headers     HTTPHeaders
-	RequestBody []byte
+	Method  HTTPMethod
+	Path    string
+	Proto   string
+	Headers HTTPHeaders
+	Body    []byte
 }
 
 func ParseRequest(r *bufio.Reader) (*HTTPRequest, error) {
@@ -80,22 +81,42 @@ func ParseRequest(r *bufio.Reader) (*HTTPRequest, error) {
 		headers[header] = parts[1]
 	}
 
+	var body []byte
+
+	lenStr, found := headers["Content-Length"]
+	if found {
+		length, err := strconv.Atoi(lenStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse Content-Lenght: %w", err)
+		}
+
+		body = make([]byte, length)
+		n, err := r.Read(body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read body: %w", err)
+		}
+		if n != length {
+			return nil, fmt.Errorf("wrong Content-Lenght")
+		}
+	}
+
 	req := &HTTPRequest{
 		Method:  method,
 		Path:    path,
 		Proto:   proto,
 		Headers: headers,
+		Body:    body,
 	}
 
 	return req, nil
 }
 
 type HTTPResponse struct {
-	Proto        string
-	Status       uint16
-	StatusText   string
-	Headers      HTTPHeaders
-	ResponseBody []byte
+	Proto      string
+	Status     uint16
+	StatusText string
+	Headers    HTTPHeaders
+	Body       []byte
 }
 
 func (resp *HTTPResponse) Encode(w io.Writer) error {
@@ -106,7 +127,7 @@ func (resp *HTTPResponse) Encode(w io.Writer) error {
 		resp.Status,
 		resp.StatusText,
 		resp.Headers,
-		resp.ResponseBody,
+		resp.Body,
 	)
 
 	return err
