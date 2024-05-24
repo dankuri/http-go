@@ -2,8 +2,11 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"compress/gzip"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/textproto"
 	"slices"
 	"strconv"
@@ -126,7 +129,23 @@ func (resp *HTTPResponse) MatchEncoding(req *HTTPRequest) *HTTPResponse {
 		return resp
 	}
 
+	buf := new(bytes.Buffer)
+	w := gzip.NewWriter(buf)
+	_, err := w.Write(resp.Body)
+	if err != nil {
+		slog.Error("failed to compress body (write)", "err", err)
+		return resp
+	}
+	err = w.Close()
+	if err != nil {
+		slog.Error("failed to compress body (close)", "err", err)
+		return resp
+	}
+
+	resp.Body = buf.Bytes()
 	resp.Headers["Content-Encoding"] = "gzip"
+	resp.Headers["Content-Length"] = strconv.Itoa(len(resp.Body))
+
 	return resp
 }
 
