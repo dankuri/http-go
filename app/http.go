@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/textproto"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -120,12 +121,12 @@ type HTTPResponse struct {
 }
 
 func (resp *HTTPResponse) MatchEncoding(req *HTTPRequest) *HTTPResponse {
-	acceptEnc := req.Headers["Accept-Encoding"]
-	if acceptEnc != "gzip" {
+	acceptEncList := strings.Split(req.Headers["Accept-Encoding"], ", ")
+	if !slices.Contains(acceptEncList, "gzip") {
 		return resp
 	}
 
-	resp.Headers["Content-Encoding"] = acceptEnc
+	resp.Headers["Content-Encoding"] = "gzip"
 	return resp
 }
 
