@@ -8,5 +8,4 @@
 
 module github.com/codecrafters-io/http-server-starter-go
 
-go 1.24
-
+go 1.22
