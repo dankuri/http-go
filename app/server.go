@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net"
@@ -46,51 +47,66 @@ func main() {
 			if err != nil {
 				slog.Error("failed to handle conn", "err", err)
 			}
+			slog.Debug("finished serving connection", "connID", connID)
 		}()
 	}
 }
 
 func handleConn(cfg *Config, conn net.Conn, connID int) error {
 	rd := bufio.NewReader(conn)
-	req, err := ParseRequest(rd)
-	if err != nil {
-		return err
+	for {
+		req, err := ParseRequest(rd)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
+		}
+		slog.Debug("new request",
+			"connID", connID,
+			"method", req.Method,
+			"path", req.Path,
+		)
+
+		var resp *HTTPResponse
+		handler := "unknown"
+
+		switch {
+		case req.Path == "/":
+			resp = &HTTPResponse{
+				Proto:      "HTTP/1.1",
+				Status:     200,
+				StatusText: "OK",
+			}
+		case strings.HasPrefix(req.Path, "/echo"):
+			handler = "echo"
+			resp, err = handleEcho(req)
+		case req.Path == "/user-agent":
+			handler = "user-agent"
+			resp, err = handleUserAgent(req)
+		case req.Method == GET && strings.HasPrefix(req.Path, "/files/"):
+			handler = "get files"
+			resp, err = handleGetFile(cfg.Dir, req)
+		case req.Method == POST && strings.HasPrefix(req.Path, "/files/"):
+			handler = "post files"
+			resp, err = handlePostFile(cfg.Dir, req)
+		default:
+			resp = &HTTPResponse{
+				Proto:      "HTTP/1.1",
+				Status:     404,
+				StatusText: "Not Found",
+			}
+		}
+
+		if err != nil {
+			return fmt.Errorf("failed to handle %s req: %w", handler, err)
+		}
+
+		err = resp.Encode(conn)
+		if err != nil {
+			return err
+		}
 	}
-
-	if req.Path == "/" {
-		_, err := conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
-		slog.Info("responded 200", "connID", connID)
-		return err
-	} else if strings.HasPrefix(req.Path, "/echo") {
-		resp, err := handleEcho(req)
-		if err != nil {
-			return fmt.Errorf("failed to handle echo req: %w", err)
-		}
-		return resp.Encode(conn)
-	} else if req.Path == "/user-agent" {
-		resp, err := handleUserAgent(req)
-		if err != nil {
-			return fmt.Errorf("failed to handle user-agent req: %w", err)
-		}
-		return resp.Encode(conn)
-	} else if req.Method == GET && strings.HasPrefix(req.Path, "/files/") {
-		resp, err := handleGetFile(cfg.Dir, req)
-		if err != nil {
-			return fmt.Errorf("failed to handle user-agent req: %w", err)
-		}
-		return resp.Encode(conn)
-	} else if req.Method == POST && strings.HasPrefix(req.Path, "/files/") {
-		resp, err := handlePostFile(cfg.Dir, req)
-		if err != nil {
-			return fmt.Errorf("failed to handle user-agent req: %w", err)
-		}
-		return resp.Encode(conn)
-	}
-
-	_, err = conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
-	slog.Info("responded 404", "connID", connID)
-
-	return err
 }
 
 func handleEcho(req *HTTPRequest) (*HTTPResponse, error) {
