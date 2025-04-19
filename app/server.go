@@ -102,9 +102,22 @@ func handleConn(cfg *Config, conn net.Conn, connID int) error {
 			return fmt.Errorf("failed to handle %s req: %w", handler, err)
 		}
 
+		shouldClose := false
+		if req.Headers["Connection"] == "close" {
+			if resp.Headers == nil {
+				resp.Headers = make(HTTPHeaders, 1)
+			}
+			resp.Headers["Connection"] = "close"
+			shouldClose = true
+		}
+
 		err = resp.Encode(conn)
 		if err != nil {
 			return err
+		}
+
+		if shouldClose {
+			return conn.Close()
 		}
 	}
 }
